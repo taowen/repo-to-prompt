@@ -110,6 +110,5 @@ async function runCodemod(codemodUri, selectedFile, selectedFiles) {
 */
 async function loadCodemod(codemodUri) {
   const file = await vscode.workspace.fs.readFile(codemodUri);
-  console.log('load codemod', file.toString())
-  return new Function('vscode', 'selectedFile', 'selectedFiles', 'return (async () => { ' + file.toString() + ' })()');
+  return new Function('vscode', 'selectedFile', 'selectedFiles', 'return (async () => { ' + new TextDecoder().decode(file) + ' })()');
 }

@@ -1,6 +1,6 @@
 {
   "name": "repo-to-prompt",
-  "version": "1.0.7",
+  "version": "1.0.8",
   "description": "combine source code files into single prompt to chat with your repository",
   "repository":  "https://github.com/taowen/repo-to-prompt",
   "publisher": "taowen",

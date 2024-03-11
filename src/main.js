@@ -95,7 +95,7 @@ async function runCodemod(codemodUri, selectedFile, selectedFiles) {
   const codemod = await loadCodemod(codemodUri)
   try {
       console.log('[codemod] execute ' + codemodUri.fsPath)
-      const returnValue = await codemod(vscode, selectedFile, selectedFiles);
+      const returnValue = await codemod(require, vscode, selectedFile, selectedFiles);
       if (returnValue !== undefined) {
         console.log('[codemod] return value ' + JSON.stringify(returnValue))
       }
@@ -110,5 +110,5 @@ async function runCodemod(codemodUri, selectedFile, selectedFiles) {
 */
 async function loadCodemod(codemodUri) {
   const file = await vscode.workspace.fs.readFile(codemodUri);
-  return new Function('vscode', 'selectedFile', 'selectedFiles', 'return (async () => { \n' + new TextDecoder().decode(file) + '\n })()');
+  return new Function('require', 'vscode', 'selectedFile', 'selectedFiles', 'return (async () => { \n' + new TextDecoder().decode(file) + '\n })()');
 }

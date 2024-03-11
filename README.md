@@ -59,7 +59,8 @@ await run(vscode, selectedFile, selectedFiles);
 
 * `vscode` document is here https://code.visualstudio.com/api/references/vscode-api
 * `console.log` will output to 'Repo to Prompt' vscode log panel
-* `fetch` is also available
+* `fetch` is also available in vscode >= 18.x.
+* in https://githbu.dev environment, `require` is not available
 
 # links to similar tools
 

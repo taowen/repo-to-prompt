@@ -1,6 +1,6 @@
 # repo-to-prompt
 
-Combine source code files into single prompt to chat with your repository. You need to customize `repo-to-prompt.codemod.js` to your desired output format, below are some examples
+In vscode or https://github.dev/, combine source code files into single prompt to chat with your repository. Right click inside the vscode explorer to access 'Repo to Prompt' command. You need to customize `repo-to-prompt.codemod.js` to your desired output format, below are some examples. If there is no `repo-to-prompt.codemod.js` under the root folder, a empty one will be created for you.
 
 ## copy selected files to clipboard
 ```js
@@ -29,7 +29,7 @@ async function walkDirectory(uri) {
             await walkDirectory(childUri);
         } else if (type === vscode.FileType.File && name.endsWith('.py')) {
             lines.push('<file path="' + childUri.path + '">')
-            lines.push((await vscode.workspace.fs.readFile(childUri)).toString())
+            lines.push(new TextDecoder().decode(await vscode.workspace.fs.readFile(childUri)))
             lines.push('</file>')
         }
     }

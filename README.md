@@ -41,9 +41,10 @@ await vscode.env.clipboard.writeText(lines.join('\n'))
 vscode.window.showInformationMessage('copied to clipboard')
 ```
 
-## arguments provided to repo-to-prompt.js
+## arguments provided to repo-to-prompt.codemod.js
 
 three arguments are provided to the script
+
 ```js
 /**
  * @param {vscode} vscode the entry to vscode plugin api
@@ -55,6 +56,10 @@ async function run(vscode, selectedFile, selectedFiles) {
 }
 await run(vscode, selectedFile, selectedFiles);
 ```
+
+* `vscode` document is here https://code.visualstudio.com/api/references/vscode-api
+* `console.log` will output to 'Repo to Prompt' vscode log panel
+* `fetch` is also available
 
 # links to similar tools
 

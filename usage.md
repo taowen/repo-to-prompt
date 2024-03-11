@@ -71,7 +71,7 @@ vscode.window.showInformationMessage('copied to clipboard')
 
 ## 粘贴到聊天对话框里
 
-![Alt text](image.png)
+![Alt text](usage/image6.png)
 
 换成 claude.ai 或者 chat.openai.com 的聊天对话框也是一样的，都是复制粘贴。然后把你要问的问题也写在对话框里。
 

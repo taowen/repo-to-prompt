@@ -20,7 +20,7 @@ function activate(context) {
     try {
       const codemods = await listCodemods()
       if (codemods.size === 0) {
-          vscode.window.showInformationMessage(`Please create .codemods folder under workspace, and name the scripts like *.codemod.js`);
+          vscode.window.showInformationMessage(`Please name the scripts like *.codemod.js`);
           return;
       }
       const items = Array.from(codemods.keys());
@@ -39,8 +39,7 @@ function activate(context) {
       let codemods = await listCodemods()
       if (!codemods.get('repo-to-prompt.codemod.js')) {
         console.log('create dummy repo-to-prompt.codemod.js')
-        await vscode.workspace.fs.createDirectory(vscode.Uri.joinPath(vscode.workspace.workspaceFolders[0].uri, '.codemods'))
-        await vscode.workspace.fs.writeFile(vscode.Uri.joinPath(vscode.workspace.workspaceFolders[0].uri, '.codemods', 'repo-to-prompt.codemod.js'), new TextEncoder().encode(`
+        await vscode.workspace.fs.writeFile(vscode.Uri.joinPath(vscode.workspace.workspaceFolders[0].uri, 'repo-to-prompt.codemod.js'), new TextEncoder().encode(`
 /**
  * @param {vscode} vscode the entry to vscode plugin api
  * @param {vscode.Uri} selectedFile currently selected file in vscode explorer
@@ -73,17 +72,13 @@ async function listCodemods() {
       return codemods;
   }
   for (const folder of vscode.workspace.workspaceFolders) {
-      const codemodsFolderUri = vscode.Uri.joinPath(folder.uri, '.codemods');
       try {
-          const stat = await vscode.workspace.fs.stat(codemodsFolderUri);
-          if (stat.type === vscode.FileType.Directory) {
-              const entries = await vscode.workspace.fs.readDirectory(codemodsFolderUri);
-              for (const [entryName, entryType] of entries) {
-                  if (entryType === vscode.FileType.File && entryName.endsWith('.codemod.js')) {
-                      codemods.set(entryName, vscode.Uri.joinPath(codemodsFolderUri, entryName))
-                  }
-              }
-          }
+        const entries = await vscode.workspace.fs.readDirectory(folder.uri);
+        for (const [entryName, entryType] of entries) {
+            if (entryType === vscode.FileType.File && entryName.endsWith('.codemod.js')) {
+                codemods.set(entryName, vscode.Uri.joinPath(folder.uri, entryName))
+            }
+        }
       } catch(e) {
           // ignore folder not found
       }

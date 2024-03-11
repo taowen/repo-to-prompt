@@ -1,5 +1,6 @@
 # chat with github 仓库
 
+看不懂开源项目的代码怎么办呢？让 claude 给你讲解。你只要使用这个插件把整个项目复制粘贴给 claude，然后就可以哪里不懂，问哪里啦！
 整个过程只需要 chrome 浏览器。不需要本地启动 vscode，也不需要 linux 环境。
 
 ## 准备 claude 3

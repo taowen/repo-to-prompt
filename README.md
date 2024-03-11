@@ -41,6 +41,21 @@ await vscode.env.clipboard.writeText(lines.join('\n'))
 vscode.window.showInformationMessage('copied to clipboard')
 ```
 
+## arguments provided to repo-to-prompt.js
+
+three arguments are provided to the script
+```js
+/**
+ * @param {vscode} vscode the entry to vscode plugin api
+ * @param {vscode.Uri} selectedFile currently selected file in vscode explorer
+ * @param {vscode.Uri[]} selectedFiles currently multi-selected files in vscode explorer
+ */
+async function run(vscode, selectedFile, selectedFiles) {
+    console.log('you can debug the script with console.log')
+}
+await run(vscode, selectedFile, selectedFiles);
+```
+
 # links to similar tools
 
 * arxiv to prompt: https://gist.github.com/taowen/3a0ee294ae60fd7e8f14f4af81edf38e

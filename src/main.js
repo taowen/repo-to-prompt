@@ -1,13 +1,10 @@
-import * as vscode from 'vscode';
-import { listCodemods, runCodemod } from './codemod';
-
-export function activate(context: vscode.ExtensionContext) {
-  const outputChannel = vscode.window.createOutputChannel("repo-to-prompt");
+function activate(context) {
+  const outputChannel = vscode.window.createOutputChannel("Repo to Prompt");
   context.subscriptions.push(outputChannel);
   const oldLog = console.log;
   Object.defineProperty(console, 'log', {
     get() {
-        return function(...args: any[]) {
+        return function(...args) {
             oldLog.apply(console, args);
             const message = args.map(arg => `${arg}`).join(' ')
             outputChannel.appendLine(message)
@@ -25,10 +22,12 @@ export function activate(context: vscode.ExtensionContext) {
         placeHolder: 'Choose codemod to run'
     });
     if (selection) {
-        runCodemod(codemods.get(selection)!)
+        runCodemod(codemods.get(selection))
     }
   });
   context.subscriptions.push(disposable);
 }
 
-export function deactivate() {}
+function deactivate() {}
+
+module.exports = { activate, deactivate };

@@ -1,6 +1,6 @@
 {
   "name": "repo-to-prompt",
-  "version": "1.0.0",
+  "version": "1.0.2",
   "description": "combine source code files into single prompt to chat with your repository",
   "repository":  "https://github.com/taowen/repo-to-prompt",
   "publisher": "taowen",
@@ -8,13 +8,25 @@
     "vscode": "^1.85.0"
   },
   "categories": ["Other"],
-  "main": "./src/shim.js",
+  "main": "./src/main.js",
+  "browser": "./src/main.js",
   "activationEvents": ["onStartupFinished"],
   "contributes": {
+    "menus": {
+      "explorer/context": [
+        {
+          "command": "extension.repoToPrompt"
+        }
+      ]
+    },
     "commands": [
       {
         "command": "extension.runCodemod",
-        "title": "pick codemod and run"
+        "title": "Repo To Prompt (pick codemod)"
+      },
+      {
+        "command": "extension.repoToPrompt",
+        "title": "Repo to Prompt"
       }
     ],
     "keybindings": [
@@ -28,11 +40,8 @@
   "keywords": [],
   "author": "",
   "license": "MIT",
-  "dependencies": {
-    "ts-node": "^10.9.2",
-    "@types/vscode": "^1.85.0"
-  },
   "devDependencies": {
+    "@types/vscode": "^1.85.0",
     "@vscode/vsce": "^2.22.0",
     "typescript": "^5.3.3"
   },

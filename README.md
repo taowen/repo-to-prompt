@@ -62,6 +62,13 @@ await run(vscode, selectedFile, selectedFiles);
 * `fetch` is also available in vscode >= 18.x.
 * in https://githbu.dev environment, `require` is not available
 
+## multiple repo-to-prompt.codemod.js?
+
+If you want to have multiple js files to export the repository in different format. 
+You can define multiple `xxx.codemod.js` files. 
+Use keyboard short `ctrl+'` to pick from all `*.codemod.js` files. 
+However, script executed from shortcut does not have access to `selectedFile` or `selectedFiles`.
+
 # links to similar tools
 
 * arxiv to prompt: https://gist.github.com/taowen/3a0ee294ae60fd7e8f14f4af81edf38e

@@ -40,7 +40,7 @@ function activate(context) {
       if (!codemods.get('repo-to-prompt.codemod.js')) {
         console.log('create dummy repo-to-prompt.codemod.js')
         await vscode.workspace.fs.createDirectory(vscode.Uri.joinPath(vscode.workspace.workspaceFolders[0].uri, '.codemods'))
-        await vscode.workspace.fs.writeFile(vscode.Uri.joinPath(vscode.workspace.workspaceFolders[0].uri, '.codemods', 'repo-to-prompt.codemod.js'), Buffer.from(`
+        await vscode.workspace.fs.writeFile(vscode.Uri.joinPath(vscode.workspace.workspaceFolders[0].uri, '.codemods', 'repo-to-prompt.codemod.js'), new TextEncoder().encode(`
 /**
  * @param {vscode} vscode the entry to vscode plugin api
  * @param {vscode.Uri} selectedFile currently selected file in vscode explorer
@@ -49,7 +49,7 @@ function activate(context) {
 async function run(vscode, selectedFile, selectedFiles) {
     console.log('you can debug the script with console.log')
 }
-await run(vscode, selectedFile, selectedFiles);`, 'utf8'))
+await run(vscode, selectedFile, selectedFiles);`))
         codemods = await listCodemods()
       }
       if (!codemods.get('repo-to-prompt.codemod.js')) {

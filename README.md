@@ -71,5 +71,6 @@ However, script executed from shortcut does not have access to `selectedFile` or
 
 # links to similar tools
 
+* html to prompt: https://gist.github.com/taowen/95ae056924f33bafa809cb4147e52566
 * arxiv to prompt: https://gist.github.com/taowen/3a0ee294ae60fd7e8f14f4af81edf38e
 * youtube to prompt: https://gist.github.com/taowen/2a49387d5abc195ba57acbb94f4dd28f

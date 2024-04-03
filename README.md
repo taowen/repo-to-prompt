@@ -159,7 +159,9 @@ return repoMap
 
 this is a reusable codemod to generate repoMap.json from code repository
 
-## use repoMap.json to select files based on `<user-questions>`
+## include files to answer `<user-questions>`
+
+This requires a repo-map.json file
 
 ```js
 const USER_QUESTIONS = `

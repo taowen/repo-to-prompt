@@ -160,6 +160,10 @@ this is a reusable codemod to generate repoMap.json from code repository
 ## use repoMap.json to select files based on `<user-questions>`
 
 ```js
+const USER_QUESTIONS = `
+What is the sweepai overall workflow?
+What can sweepai do?
+`
 const { CLAUDE_API_URL, CLAUDE_API_KEY } = vscode.workspace.getConfiguration('taowen.repo-to-prompt')
 if (!CLAUDE_API_KEY) {
     vscode.window.showInformationMessage('please set taowen.repo-to-prompt.CLAUDE_API_KEY in your settings.json')
@@ -180,8 +184,7 @@ async function selectFiles() {
 ${lines.join('\n')}
 ===
 <user-questions>
-How sweepai refactor the code?
-How to construct refactor prompt?
+${USER_QUESTIONS}
 </user-questions>
 
 We do NOT answer <user-questions>, but list the related files in JSON string array format. Do not comment.`
@@ -207,7 +210,18 @@ We do NOT answer <user-questions>, but list the related files in JSON string arr
 let resp = await selectFiles()
 resp = resp.substring(resp.indexOf('[') + 1, resp.indexOf(']'))
 resp = `[${resp}]`
-const lines = []
+const lines = ['<user-questions>']
+lines.push(USER_QUESTIONS)
+lines.push(`
+Reorganize the content as a standalone blog post
+
+* do not reference the original articles, do not reference the original podcast, the reader do not have access to the original articles or podcast. 
+* The blog post should NEVER use these words "首先" "其次" "再次" "最后". 
+* The blog post should be very long
+* Provide examples and analogies if necessary, but still keep technical details
+* Reader should learn enough HOW-TO from your blog post
+* The blog post is written in Chinese`)
+lines.push('</user-questions>')
 for (let path of JSON.parse(resp)) {
     if (path[0] === '<') {
         path = path.substring(1)
@@ -226,8 +240,9 @@ for (let path of JSON.parse(resp)) {
         console.log('ignore file', path, e.stack)
     }
 }
-await vscode.env.clipboard.writeText(lines.join('\n'))
-vscode.window.showInformationMessage('copied to clipboard')
+const repoToPromptTxt = vscode.Uri.joinPath(vscode.workspace.workspaceFolders[0].uri, 'repo-to-prompt.txt')
+await vscode.workspace.fs.writeFile(repoToPromptTxt, new TextEncoder().encode(lines.join('\n')))
+vscode.window.showInformationMessage('prompt write to repo-to-prompt.txt')
 ```
 
 When the code repository to too large to select manually, we can use sonnet LLM to select files using repoMap.json as information index.

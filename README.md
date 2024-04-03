@@ -161,8 +161,8 @@ this is a reusable codemod to generate repoMap.json from code repository
 
 ```js
 const USER_QUESTIONS = `
-What is the sweepai overall workflow?
-What can sweepai do?
+What are the prompts used by refactoring?
+What is the overall process to use language model to refactor?
 `
 const { CLAUDE_API_URL, CLAUDE_API_KEY } = vscode.workspace.getConfiguration('taowen.repo-to-prompt')
 if (!CLAUDE_API_KEY) {
@@ -187,7 +187,7 @@ ${lines.join('\n')}
 ${USER_QUESTIONS}
 </user-questions>
 
-We do NOT answer <user-questions>, but list the related files in JSON string array format. Do not comment.`
+We do NOT answer <user-questions> now, but list files in JSON string array format to help answer <user-questions> later. Do not comment.`
     const resp = await fetch(CLAUDE_API_URL || 'https://api.anthropic.com/v1/messages', {
         method: 'POST',
         headers: {
@@ -212,15 +212,6 @@ resp = resp.substring(resp.indexOf('[') + 1, resp.indexOf(']'))
 resp = `[${resp}]`
 const lines = ['<user-questions>']
 lines.push(USER_QUESTIONS)
-lines.push(`
-Reorganize the content as a standalone blog post
-
-* do not reference the original articles, do not reference the original podcast, the reader do not have access to the original articles or podcast. 
-* The blog post should NEVER use these words "首先" "其次" "再次" "最后". 
-* The blog post should be very long
-* Provide examples and analogies if necessary, but still keep technical details
-* Reader should learn enough HOW-TO from your blog post
-* The blog post is written in Chinese`)
 lines.push('</user-questions>')
 for (let path of JSON.parse(resp)) {
     if (path[0] === '<') {
@@ -232,9 +223,9 @@ for (let path of JSON.parse(resp)) {
     const uri = vscode.Uri.joinPath(vscode.workspace.workspaceFolders[0].uri, path)
     try {
         await vscode.workspace.fs.stat(uri);
-        lines.push(`<${path}>`)
+        lines.push(`<file path="${path}">`)
         lines.push(new TextDecoder().decode(await vscode.workspace.fs.readFile(uri)))
-        lines.push(`</${path}>`)
+        lines.push(`</file>`)
         console.log('select file', path)
     } catch (e) {
         console.log('ignore file', path, e.stack)

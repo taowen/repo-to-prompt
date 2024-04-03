@@ -232,6 +232,15 @@ After we have FileChangeRequest, how to generate the change?
 What prompt will be used to generate the change?
 `
 let INCLUDED_FILES = `
+sweepai/agents/assistant_functions.py
+sweepai/agents/assistant_wrapper.py
+sweepai/agents/modify_file.py
+sweepai/core/update_prompts.py
+sweepai/agents/assistant_function_modify.py 
+sweepai/agents/assistant_planning.py 
+sweepai/agents/modify_bot.py 
+sweepai/agents/prune_modify_snippets.py 
+sweepai/core/prompts.py 
 `
 INCLUDED_FILES = INCLUDED_FILES.trim()
 if (INCLUDED_FILES) {
@@ -273,9 +282,9 @@ lines.push('Do NOT answer <user-questions>')
 lines.push(USER_QUESTIONS.trim())
 lines.push('</user-questions> now. We will answer user questions later.')
 if (INCLUDED_FILES.size) {
-    lines.push('Repeat <already-included-files>')
+    lines.push('Besides <already-included-files>')
     lines.push(Array.from(INCLUDED_FILES).join(',\n'))
-    lines.push('</already-included-files> Then')
+    lines.push('</already-included-files>')
 }
 lines.push(`output related extra files in
 <extra-files>

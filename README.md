@@ -225,32 +225,23 @@ You need to manually execute the prompts report-map-n.txt and write the output i
 This requires a repo-map.json file
 
 ```js
+const REPO_MAP = JSON.parse(new TextDecoder().decode(await vscode.workspace.fs.readFile(vscode.Uri.joinPath(vscode.workspace.workspaceFolders[0].uri, 'repo-map.json'))))
+// const REPO_MAP = await runCodemod('repo-map.codemod.js')
 const USER_QUESTIONS = `
-Language Model Interaction
-Plan Generation
-Plan Validation
-What is the input and output of planning?
-Why SweepAi has this plan stage?
+After we have FileChangeRequest, how to generate the change?
+What prompt will be used to generate the change?
 `
 let INCLUDED_FILES = `
-sweepai/agents/assistant_planning.py
-sweepai/core/context_pruning.py
-sweepai/core/entities.py
-sweepai/core/prompts.py
 `
-const COPY_PASTE_THIS = `
-We do NOT answer <user-questions> now,
-list <already-included>file paths</already-included> and <extra-files>file paths</extra-files> to help answer <user-questions> later. 
-Do not comment why the file is included.
-`
-const REPO_MAP = await runCodemod('repo-map.codemod.js')
 INCLUDED_FILES = INCLUDED_FILES.trim()
-INCLUDED_FILES = INCLUDED_FILES.split('\n')
-INCLUDED_FILES = INCLUDED_FILES.map(f => f.trim())
-INCLUDED_FILES = new Set(INCLUDED_FILES)
-const lines = ['<user-questions>']
-lines.push(USER_QUESTIONS)
-lines.push('</user-questions>')
+if (INCLUDED_FILES) {
+    INCLUDED_FILES = INCLUDED_FILES.split('\n')
+    INCLUDED_FILES = INCLUDED_FILES.map(f => f.trim())
+    INCLUDED_FILES = new Set(INCLUDED_FILES)
+} else {
+    INCLUDED_FILES = new Set()
+}
+let lines = []
 for (let path of INCLUDED_FILES) {
     if (path[0] === '<') {
         path = path.substring(1)
@@ -275,12 +266,23 @@ for (const [k, v] of Object.entries(REPO_MAP)) {
     lines.push(v)
     lines.push(`</file>`)
 }
-lines.push('<already-included>')
-lines.push(Array.from(INCLUDED_FILES).join(',\n'))
-lines.push('</already-included>')
 const repoToPromptTxt = vscode.Uri.joinPath(vscode.workspace.workspaceFolders[0].uri, 'repo-to-prompt.txt')
 await vscode.workspace.fs.writeFile(repoToPromptTxt, new TextEncoder().encode(lines.join('\n')))
-vscode.window.showInformationMessage('prompt write to repo-to-prompt.txt')
+lines = []
+lines.push('Do NOT answer <user-questions>')
+lines.push(USER_QUESTIONS.trim())
+lines.push('</user-questions> now. We will answer user questions later.')
+if (INCLUDED_FILES.size) {
+    lines.push('Repeat <already-included-files>')
+    lines.push(Array.from(INCLUDED_FILES).join(',\n'))
+    lines.push('</already-included-files> Then')
+}
+lines.push(`output related extra files in
+<extra-files>
+file paths, which is related to user questions
+</extra-files>`)
+await vscode.env.clipboard.writeText(lines.join('\n'))
+vscode.window.showInformationMessage('file content write to repo-to-prompt.txt, expand query copied to clipboard')
 ```
 
 When the code repository to too large to select manually, we can use sonnet LLM to select files using repoMap.json as information index.

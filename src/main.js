@@ -55,7 +55,7 @@ await run(vscode, selectedFile, selectedFiles);`))
         console.log('can not find repo-to-prompt.codemod.js')
         return;
       }
-      await runCodemod(codemods.get('repo-to-prompt.codemod.js'), selectedFile, selectedFiles)
+      await runCodemod(codemods.get('repo-to-prompt.codemod.js'), { selectedFile, selectedFiles })
     } catch(e) {
       console.log('failed to handle repoToPrompt', e)
     }
@@ -87,18 +87,23 @@ async function listCodemods() {
 }
 
 /**
-* @param {vscode.Uri} codemodUri 
+* @param {vscode.Uri | string} codemodUri 
 * @param {vscode.Uri | undefined} selectedFile 
 * @param {vscode.Uri[] | undefined} selectedFiles 
 */
-async function runCodemod(codemodUri, selectedFile, selectedFiles) {
+async function runCodemod(codemodUri, options) {
+  const { selectedFile, selectedFiles, extraArgs } = (options || {});
+  if (typeof(codemodUri) === 'string') {
+    codemodUri = vscode.Uri.joinPath(vscode.workspace.workspaceFolders[0].uri, codemodUri)
+  }
   const codemod = await loadCodemod(codemodUri)
   try {
       console.log('[codemod] execute ' + codemodUri.fsPath)
-      const returnValue = await codemod(require, vscode, selectedFile, selectedFiles);
+      const returnValue = await codemod(require, vscode, runCodemod, selectedFile, selectedFiles, extraArgs || {});
       if (returnValue !== undefined) {
         console.log('[codemod] return value ' + JSON.stringify(returnValue))
       }
+      return returnValue;
   } catch(e) {
       console.log(`[codemod] failed to execute ${codemodUri.fsPath} ${e.stack}`)
   }
@@ -109,6 +114,13 @@ async function runCodemod(codemodUri, selectedFile, selectedFiles) {
 * @returns 
 */
 async function loadCodemod(codemodUri) {
-  const file = await vscode.workspace.fs.readFile(codemodUri);
-  return new Function('require', 'vscode', 'selectedFile', 'selectedFiles', 'return (async () => { \n' + new TextDecoder().decode(file) + '\n })()');
+  try {
+    const file = await vscode.workspace.fs.readFile(codemodUri);
+    return new Function(
+      'require', 'vscode', 'runCodemod', 'selectedFile', 'selectedFiles', 'extraArgs', 
+      'return (async () => { \n' + new TextDecoder().decode(file) + '\n })()');
+  } catch(e) {
+    console.log(`[codemod] failed to load ${codemodUri.fsPath} ${e.stack}`)
+    throw e;
+  }
 }

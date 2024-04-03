@@ -145,6 +145,7 @@ await run(vscode, selectedFile, selectedFiles);
 * `console.log` will output to 'Repo to Prompt' vscode log panel
 * `fetch` is also available in vscode >= 18.x.
 * in https://githbu.dev environment, `require` is not available
+* `runCodemod` allow one codemod.js call another codemod.js
 
 ## multiple repo-to-prompt.codemod.js?
 

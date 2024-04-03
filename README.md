@@ -41,6 +41,90 @@ await vscode.env.clipboard.writeText(lines.join('\n'))
 vscode.window.showInformationMessage('copied to clipboard')
 ```
 
+## generate `repo-map.json`
+
+```js
+const { CLAUDE_API_URL, CLAUDE_API_KEY } = vscode.workspace.getConfiguration('taowen.repo-to-prompt')
+if (!CLAUDE_API_KEY) {
+    vscode.window.showInformationMessage('please set taowen.repo-to-prompt.CLAUDE_API_KEY in your settings.json')
+    return;
+}
+const repoMapUri = vscode.Uri.joinPath(vscode.workspace.workspaceFolders[0].uri, 'repo-map.json')
+let repoMap = {}
+try {
+    repoMap = JSON.parse(new TextDecoder().decode(await vscode.workspace.fs.readFile(repoMapUri)))
+} catch(e) {
+    // ignore
+}
+async function updateRepoMap(filePath, fileSummary) {
+    repoMap[filePath] = fileSummary
+    await vscode.workspace.fs.writeFile(repoMapUri, new TextEncoder().encode(JSON.stringify(repoMap, undefined, '  ')))
+}
+async function summarizeFile(filePath, fileContent) {
+    for (let i = 0; i < 3; i++) {
+
+        console.log('summarize', filePath)
+        const resp = await fetch(CLAUDE_API_URL || 'https://api.anthropic.com/v1/messages', {
+            method: 'POST',
+            headers: {
+                "x-api-key": CLAUDE_API_KEY,
+                "anthropic-version": '2023-06-01',
+                "content-type": "application/json",
+            },
+            body: JSON.stringify({
+                "model": 'claude-3-haiku-20240307',
+                "max_tokens": 4000,
+                "messages": [{
+                    role: "user", content: `
+    ${fileContent}
+    summarize the file ${filePath} into a sentence
+                    `
+                }, {
+                    role: 'assistant', content: `The file '${filePath}' contains`
+                }]
+            })
+        })
+        const respJson = await resp.json()
+        if (!respJson.content) {
+            console.log('failed', JSON.stringify(respJson))
+            await new Promise(resolve => setTimeout(resolve, 3000))
+            continue
+        }
+        console.log(respJson.content[0].text)
+        return respJson.content[0].text
+    }
+    throw new Error('failed to summarize')
+}
+async function walkDirectory(uri) {
+    const children = await vscode.workspace.fs.readDirectory(uri);
+    for (const [name, type] of children) {
+        if (name.startsWith('.') || name === 'node_modules' || name === 'pnpm-lock.yaml') {
+            continue;
+        }
+        const childUri = vscode.Uri.joinPath(uri, name);
+        if (type === vscode.FileType.Directory) {
+            await walkDirectory(childUri);
+        } else if (type === vscode.FileType.File && (name.endsWith('.py') || name.endsWith('.yaml'))) {
+            if (childUri.path in repoMap) {
+                console.log('skip', childUri.path)
+                continue
+            }
+            const fileLines = []
+            fileLines.push('<file path="' + childUri.path + '">')
+            fileLines.push(new TextDecoder().decode(await vscode.workspace.fs.readFile(childUri)))
+            fileLines.push('</file>')
+            const fileContent = fileLines.join('\n')
+            const fileSummary = await summarizeFile(childUri.path, fileContent)
+            await updateRepoMap(childUri.path, fileSummary.trim())
+        }
+    }
+}
+for (const folder of vscode.workspace.workspaceFolders) {
+    await walkDirectory(folder.uri);
+}
+vscode.window.showInformationMessage('repo-map.json updated')
+```
+
 ## arguments provided to repo-to-prompt.codemod.js
 
 three arguments are provided to the script

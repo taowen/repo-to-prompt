@@ -159,6 +159,67 @@ return repoMap
 
 this is a reusable codemod to generate repoMap.json from code repository
 
+## manulaly generate repo-map.json
+
+```js
+let files = []
+let counter = 0
+async function walkDirectory(uri) {
+    const children = await vscode.workspace.fs.readDirectory(uri);
+    for (const [name, type] of children) {
+        if (name.startsWith('.') || name === 'node_modules' || name === 'pnpm-lock.yaml') {
+            continue;
+        }
+        const childUri = vscode.Uri.joinPath(uri, name);
+        if (type === vscode.FileType.Directory) {
+            await walkDirectory(childUri);
+        } else if (type === vscode.FileType.File && (name.endsWith('.py') || name.endsWith('.yaml'))) {
+            if (childUri.path.includes('test')) {
+                continue
+            }
+            files.push(childUri)
+            if (files.length > 10) {
+                counter += 1
+                await dumpFiles()
+            }
+        }
+    }
+}
+async function dumpFiles() {
+    if (!files.length) {
+        return;
+    }
+    const lines = []
+    const summarize_files = []
+    for (const file of files) {
+        const relPath = vscode.workspace.asRelativePath(file)
+        const content = new TextDecoder().decode(await vscode.workspace.fs.readFile(file))
+        if (content.trim()) {
+            lines.push('<file path="' + relPath + '">')
+            lines.push(content)
+            lines.push('</file>')
+            summarize_files.push(file)
+        }
+    }
+    files = []
+    lines.push('summarize each file into a sentence. output in this format')
+    lines.push('{')
+    for (const file of summarize_files) {
+        const relPath = vscode.workspace.asRelativePath(file)
+        lines.push(`"${relPath}":"summary",`)
+    }
+    lines.push('}')
+    const repoMapTxt = vscode.Uri.joinPath(vscode.workspace.workspaceFolders[0].uri, `repo-map-${counter}.txt`)
+    await vscode.workspace.fs.writeFile(repoMapTxt, new TextEncoder().encode(lines.join('\n')))
+}
+for (const folder of vscode.workspace.workspaceFolders) {
+    await walkDirectory(folder.uri);
+}
+await dumpFiles()
+```
+
+You need to manually execute the prompts report-map-n.txt and write the output in repo-map.json
+
 ## include files to answer `<user-questions>`
 
 This requires a repo-map.json file

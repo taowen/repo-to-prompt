@@ -177,6 +177,10 @@ async function walkDirectory(uri) {
             if (childUri.path.includes('test')) {
                 continue
             }
+            const content = new TextDecoder().decode(await vscode.workspace.fs.readFile(childUri))
+            if (!content.trim()) {
+                continue
+            }
             files.push(childUri)
             if (files.length > 10) {
                 counter += 1
@@ -190,27 +194,23 @@ async function dumpFiles() {
         return;
     }
     const lines = []
-    const summarize_files = []
     for (const file of files) {
         const relPath = vscode.workspace.asRelativePath(file)
         const content = new TextDecoder().decode(await vscode.workspace.fs.readFile(file))
-        if (content.trim()) {
-            lines.push('<file path="' + relPath + '">')
-            lines.push(content)
-            lines.push('</file>')
-            summarize_files.push(file)
-        }
+        lines.push('<file path="' + relPath + '">')
+        lines.push(content)
+        lines.push('</file>')
     }
-    files = []
-    lines.push('summarize each file into a sentence. output in this format')
+    lines.push('summarize each file into a paragraph. output in this format')
     lines.push('{')
-    for (const file of summarize_files) {
+    for (const file of files) {
         const relPath = vscode.workspace.asRelativePath(file)
         lines.push(`"${relPath}":"summary",`)
     }
     lines.push('}')
     const repoMapTxt = vscode.Uri.joinPath(vscode.workspace.workspaceFolders[0].uri, `repo-map-${counter}.txt`)
     await vscode.workspace.fs.writeFile(repoMapTxt, new TextEncoder().encode(lines.join('\n')))
+    files = []
 }
 for (const folder of vscode.workspace.workspaceFolders) {
     await walkDirectory(folder.uri);

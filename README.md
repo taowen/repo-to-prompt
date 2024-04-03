@@ -116,7 +116,7 @@ async function summarizeFile(filePath, fileContent) {
         const respJson = await resp.json()
         if (!respJson.content) {
             console.log('failed', JSON.stringify(respJson))
-            await new Promise(resolve => setTimeout(resolve, 3000))
+            await new Promise(resolve => setTimeout(resolve, 10000))
             continue
         }
         console.log(respJson.content[0].text)
@@ -135,8 +135,10 @@ async function walkDirectory(uri) {
             await walkDirectory(childUri);
         } else if (type === vscode.FileType.File && (name.endsWith('.py') || name.endsWith('.yaml'))) {
             const relPath = vscode.workspace.asRelativePath(childUri)
+            if (relPath.includes('test')) {
+                continue;
+            }
             if (relPath in repoMap) {
-                console.log('skip', relPath)
                 continue
             }
             const fileLines = []
@@ -161,59 +163,32 @@ this is a reusable codemod to generate repoMap.json from code repository
 
 ```js
 const USER_QUESTIONS = `
-What are the prompts used by refactoring?
-What is the overall process to use language model to refactor?
+Language Model Interaction
+Plan Generation
+Plan Validation
+What is the input and output of planning?
+Why SweepAi has this plan stage?
 `
-const { CLAUDE_API_URL, CLAUDE_API_KEY } = vscode.workspace.getConfiguration('taowen.repo-to-prompt')
-if (!CLAUDE_API_KEY) {
-    vscode.window.showInformationMessage('please set taowen.repo-to-prompt.CLAUDE_API_KEY in your settings.json')
-    return;
-}
-/**
- * @returns {string}
- */
-async function selectFiles() {
-    const repoMap = await runCodemod('repo-map.codemod.js')
-    const lines = []
-    for (const [k, v] of Object.entries(repoMap)) {
-        lines.push(`<${k}>`)
-        lines.push(v.trim())
-        lines.push(`</${k}>`)
-    }
-    const prompt = `
-${lines.join('\n')}
-===
-<user-questions>
-${USER_QUESTIONS}
-</user-questions>
-
-We do NOT answer <user-questions> now, but list files in JSON string array format to help answer <user-questions> later. Do not comment.`
-    const resp = await fetch(CLAUDE_API_URL || 'https://api.anthropic.com/v1/messages', {
-        method: 'POST',
-        headers: {
-            "x-api-key": CLAUDE_API_KEY,
-            "anthropic-version": '2023-06-01',
-            "content-type": "application/json",
-        },
-        body: JSON.stringify({
-            "model": 'claude-3-sonnet-20240229',
-            "max_tokens": 4000,
-            "messages": [{
-                role: "user", content: prompt
-            }]
-        })
-    })
-    const respJson = await resp.json()
-    console.log(respJson.content[0].text)
-    return respJson.content[0].text
-}
-let resp = await selectFiles()
-resp = resp.substring(resp.indexOf('[') + 1, resp.indexOf(']'))
-resp = `[${resp}]`
+let INCLUDED_FILES = `
+sweepai/agents/assistant_planning.py
+sweepai/core/context_pruning.py
+sweepai/core/entities.py
+sweepai/core/prompts.py
+`
+const COPY_PASTE_THIS = `
+We do NOT answer <user-questions> now,
+list <already-included>file paths</already-included> and <extra-files>file paths</extra-files> to help answer <user-questions> later. 
+Do not comment why the file is included.
+`
+const REPO_MAP = await runCodemod('repo-map.codemod.js')
+INCLUDED_FILES = INCLUDED_FILES.trim()
+INCLUDED_FILES = INCLUDED_FILES.split('\n')
+INCLUDED_FILES = INCLUDED_FILES.map(f => f.trim())
+INCLUDED_FILES = new Set(INCLUDED_FILES)
 const lines = ['<user-questions>']
 lines.push(USER_QUESTIONS)
 lines.push('</user-questions>')
-for (let path of JSON.parse(resp)) {
+for (let path of INCLUDED_FILES) {
     if (path[0] === '<') {
         path = path.substring(1)
     }
@@ -230,7 +205,16 @@ for (let path of JSON.parse(resp)) {
     } catch (e) {
         console.log('ignore file', path, e.stack)
     }
+    delete REPO_MAP[path]
 }
+for (const [k, v] of Object.entries(REPO_MAP)) {
+    lines.push(`<file path="${k}">`)
+    lines.push(v)
+    lines.push(`</file>`)
+}
+lines.push('<already-included>')
+lines.push(Array.from(INCLUDED_FILES).join(',\n'))
+lines.push('</already-included>')
 const repoToPromptTxt = vscode.Uri.joinPath(vscode.workspace.workspaceFolders[0].uri, 'repo-to-prompt.txt')
 await vscode.workspace.fs.writeFile(repoToPromptTxt, new TextEncoder().encode(lines.join('\n')))
 vscode.window.showInformationMessage('prompt write to repo-to-prompt.txt')

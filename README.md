@@ -70,7 +70,7 @@ You can define multiple `xxx.codemod.js` files.
 Use keyboard short `ctrl+'` to pick from all `*.codemod.js` files. 
 However, script executed from shortcut does not have access to `selectedFile` or `selectedFiles`.
 
-## repo-map.codemod.js
+## repo-map.codemod.js generate repo-map.json using claude haiku
 
 ```js
 const { CLAUDE_API_URL, CLAUDE_API_KEY } = vscode.workspace.getConfiguration('taowen.repo-to-prompt')

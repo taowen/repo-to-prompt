@@ -296,6 +296,78 @@ vscode.window.showInformationMessage('file content write to repo-to-prompt.txt, 
 
 When the code repository to too large to select manually, we can use sonnet LLM to select files using repoMap.json as information index.
 
+# cut chunks of same size
+
+```js
+const files = []
+let lines = ''
+let counter = 0
+async function walkDirectory(uri) {
+    const children = await vscode.workspace.fs.readDirectory(uri);
+    for (const [name, type] of children) {
+        if (name.startsWith('.') || name === 'node_modules' || name === 'pnpm-lock.yaml') {
+            continue;
+        }
+        const childUri = vscode.Uri.joinPath(uri, name);
+        if (type === vscode.FileType.Directory) {
+            await walkDirectory(childUri);
+        } else if (type === vscode.FileType.File && (name.endsWith('.c') || name.endsWith('.cpp') || name.endsWith('.h'))) {
+            const relPath = vscode.workspace.asRelativePath(childUri)
+            if (relPath.includes('test')) {
+                continue
+            }
+            const content = new TextDecoder().decode(await vscode.workspace.fs.readFile(childUri)).replace(/\/\/.*|\/\*[\s\S]*?\*\//g, '')
+            if (!content.trim()) {
+                continue
+            }
+            files.push(childUri)
+        }
+    }
+}
+async function dumpFiles() {
+    counter += 1
+    const repoMapTxt = vscode.Uri.joinPath(vscode.workspace.workspaceFolders[0].uri, `repo-${counter}.txt`)
+    await vscode.workspace.fs.writeFile(repoMapTxt, new TextEncoder().encode(lines))
+    lines = ''
+}
+
+const target = vscode.Uri.joinPath(vscode.workspace.workspaceFolders[0].uri, 'src/modules/ekf2')
+await walkDirectory(target);
+
+function shuffle(array) {
+    for (let i = array.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [array[i], array[j]] = [array[j], array[i]];
+    }
+    return array;
+}
+
+shuffle(files)
+for (const file of files) {
+    const relPath = vscode.workspace.asRelativePath(file)
+    const content = new TextDecoder().decode(await vscode.workspace.fs.readFile(file)).replace(/\/\/.*|\/\*[\s\S]*?\*\//g, '')
+    lines += '\n<file path="' + relPath + '">\n'
+    lines += content
+    lines += '\n</file>\n'
+    if (lines.length > 300 * 1000) {
+        await dumpFiles()
+    }
+}
+await dumpFiles()
+shuffle(files)
+for (const file of files) {
+    const relPath = vscode.workspace.asRelativePath(file)
+    const content = new TextDecoder().decode(await vscode.workspace.fs.readFile(file)).replace(/\/\/.*|\/\*[\s\S]*?\*\//g, '')
+    lines += '\n<file path="' + relPath + '">\n'
+    lines += content
+    lines += '\n</file>\n'
+    if (lines.length > 300 * 1000) {
+        await dumpFiles()
+    }
+}
+await dumpFiles()
+```
+
 # links to similar tools
 
 * html to prompt: https://gist.github.com/taowen/95ae056924f33bafa809cb4147e52566

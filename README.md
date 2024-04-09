@@ -243,8 +243,11 @@ for (const relPath of relevantFiles) {
     concatedRelevantFiles += await readFile(relevantFile)
     concatedRelevantFiles += '\n</' + relPath + '>\n'
 }
-await vscode.workspace.fs.writeFile(vscode.Uri.joinPath(rootDir, 'repo-to-prompt.txt'), utf8encoder.encode(concatedRelevantFiles))
+await vscode.env.clipboard.writeText(concatedRelevantFiles)
+vscode.window.showInformationMessage('copied to clipboard')
 ```
+
+You need to manually update USER_QUESTIONS and walkDirectory(xxx) first. Then run repo-to-prompt to call claude api to filter each file based on the question.
 
 # links to similar tools
 

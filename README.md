@@ -70,302 +70,180 @@ You can define multiple `xxx.codemod.js` files.
 Use keyboard short `ctrl+'` to pick from all `*.codemod.js` files. 
 However, script executed from shortcut does not have access to `selectedFile` or `selectedFiles`.
 
-## repo-map.codemod.js generate repo-map.json using claude haiku
+## filter relevant files using claude 3 haiku
 
 ```js
+let USER_QUESTIONS = `
+代码中的静止检测算法分为几种？每一种静止检测算法完整的上下游数据流是怎样的？
+`
 const { CLAUDE_API_URL, CLAUDE_API_KEY } = vscode.workspace.getConfiguration('taowen.repo-to-prompt')
 if (!CLAUDE_API_KEY) {
     vscode.window.showInformationMessage('please set taowen.repo-to-prompt.CLAUDE_API_KEY in your settings.json')
     return;
 }
-const repoMapUri = vscode.Uri.joinPath(vscode.workspace.workspaceFolders[0].uri, 'repo-map.json')
-let repoMap = {}
-try {
-    repoMap = JSON.parse(new TextDecoder().decode(await vscode.workspace.fs.readFile(repoMapUri)))
-} catch(e) {
-    // ignore
+const utf8decoder = new TextDecoder()
+const utf8encoder = new TextEncoder()
+const rootDir = vscode.workspace.workspaceFolders[0].uri
+const files = []
+let chunkLines = ''
+let chunkFiles = []
+let counter = 0
+async function walkDirectory(uri) {
+    const children = await vscode.workspace.fs.readDirectory(uri);
+    for (const [name, type] of children) {
+        if (name.startsWith('.') || name === 'node_modules' || name === 'pnpm-lock.yaml') {
+            continue;
+        }
+        const childUri = vscode.Uri.joinPath(uri, name);
+        if (type === vscode.FileType.Directory) {
+            await walkDirectory(childUri);
+        } else if (type === vscode.FileType.File && (name.endsWith('.c') || name.endsWith('.cpp'))) {
+            const relPath = vscode.workspace.asRelativePath(childUri)
+            if (relPath.includes('test')) {
+                continue
+            }
+            const content = await readFile(childUri)
+            if (!content.trim()) {
+                continue
+            }
+            files.push(childUri)
+        }
+    }
 }
-async function updateRepoMap(filePath, fileSummary) {
-    repoMap[filePath] = fileSummary
-    await vscode.workspace.fs.writeFile(repoMapUri, new TextEncoder().encode(JSON.stringify(repoMap, undefined, '  ')))
+async function readPreviousAnswer(answerFile) {
+    try {
+        return JSON.parse(utf8decoder.decode(await vscode.workspace.fs.readFile(answerFile))).content[0].text
+    } catch(e) {
+        // ignore
+        return undefined
+    }
 }
-async function summarizeFile(filePath, fileContent) {
-    for (let i = 0; i < 3; i++) {
-
-        console.log('summarize', filePath)
-        const resp = await fetch(CLAUDE_API_URL || 'https://api.anthropic.com/v1/messages', {
-            method: 'POST',
-            headers: {
-                "x-api-key": CLAUDE_API_KEY,
-                "anthropic-version": '2023-06-01',
-                "content-type": "application/json",
-            },
-            body: JSON.stringify({
-                "model": 'claude-3-haiku-20240307',
-                "max_tokens": 4000,
-                "messages": [{
-                    role: "user", content: `
-    ${fileContent}
-    summarize the file ${filePath} into a sentence
-                    `
-                }, {
-                    role: 'assistant', content: `The file '${filePath}' contains`
-                }]
-            })
-        })
-        const respJson = await resp.json()
-        if (!respJson.content) {
-            console.log('failed', JSON.stringify(respJson))
-            await new Promise(resolve => setTimeout(resolve, 10000))
+async function askClaude(answerFile, question) {
+    let answer = await readPreviousAnswer(answerFile)
+    if (answer) {
+        return answer;
+    }
+    console.log('asking question', answerFile.path)
+    const resp = await fetch(CLAUDE_API_URL || 'https://api.anthropic.com/v1/messages', {
+        method: 'POST', headers: {
+            "x-api-key": CLAUDE_API_KEY,
+            "anthropic-version": '2023-06-01',
+            "content-type": "application/json",
+        }, body: JSON.stringify({
+            model: 'claude-3-haiku-20240307',
+            max_tokens: 4000,
+            temperature: 0,
+            messages: [{ role: "user", content: question }] })
+    });
+    const respJson = await resp.json()
+    await vscode.workspace.fs.writeFile(answerFile, utf8encoder.encode(JSON.stringify(respJson, undefined, '  ')))
+    return respJson.content[0].text
+}
+function extractScores(answer) {
+    answer = answer.substring(answer.indexOf('<relevance-score>'))
+    answer = answer.substring('<relevance-score>'.length)
+    answer = answer.substring(0, answer.indexOf('</relevance-score>'))
+    const scores = {}
+    for (let line of answer.split('\n')) {
+        line = line.trim()
+        if (line.length === 0) {
             continue
         }
-        console.log(respJson.content[0].text)
-        return respJson.content[0].text
+        const [relPath, score] = line.split(':', 2)
+        scores[relPath.trim()] = Number.parseInt(score.trim())
     }
-    throw new Error('failed to summarize')
+    return scores
 }
-async function walkDirectory(uri) {
-    const children = await vscode.workspace.fs.readDirectory(uri);
-    for (const [name, type] of children) {
-        if (name.startsWith('.') || name === 'node_modules' || name === 'pnpm-lock.yaml') {
-            continue;
-        }
-        const childUri = vscode.Uri.joinPath(uri, name);
-        if (type === vscode.FileType.Directory) {
-            await walkDirectory(childUri);
-        } else if (type === vscode.FileType.File && (name.endsWith('.py') || name.endsWith('.yaml'))) {
-            const relPath = vscode.workspace.asRelativePath(childUri)
-            if (relPath.includes('test')) {
-                continue;
-            }
-            if (relPath in repoMap) {
-                continue
-            }
-            const fileLines = []
-            fileLines.push('<file path="' + relPath + '">')
-            fileLines.push(new TextDecoder().decode(await vscode.workspace.fs.readFile(childUri)))
-            fileLines.push('</file>')
-            const fileContent = fileLines.join('\n')
-            const fileSummary = await summarizeFile(relPath, fileContent)
-            await updateRepoMap(relPath, fileSummary.trim())
-        }
-    }
-}
-for (const folder of vscode.workspace.workspaceFolders) {
-    await walkDirectory(folder.uri);
-}
-return repoMap
-```
-
-this is a reusable codemod to generate repoMap.json from code repository
-
-## manulaly generate repo-map.json
-
-```js
-let files = []
-let counter = 0
-async function walkDirectory(uri) {
-    const children = await vscode.workspace.fs.readDirectory(uri);
-    for (const [name, type] of children) {
-        if (name.startsWith('.') || name === 'node_modules' || name === 'pnpm-lock.yaml') {
-            continue;
-        }
-        const childUri = vscode.Uri.joinPath(uri, name);
-        if (type === vscode.FileType.Directory) {
-            await walkDirectory(childUri);
-        } else if (type === vscode.FileType.File && (name.endsWith('.py') || name.endsWith('.yaml'))) {
-            if (childUri.path.includes('test')) {
-                continue
-            }
-            const content = new TextDecoder().decode(await vscode.workspace.fs.readFile(childUri))
-            if (!content.trim()) {
-                continue
-            }
-            files.push(childUri)
-            if (files.length > 10) {
-                counter += 1
-                await dumpFiles()
-            }
-        }
-    }
-}
-async function dumpFiles() {
-    if (!files.length) {
-        return;
-    }
-    const lines = []
-    for (const file of files) {
-        const relPath = vscode.workspace.asRelativePath(file)
-        const content = new TextDecoder().decode(await vscode.workspace.fs.readFile(file))
-        lines.push('<file path="' + relPath + '">')
-        lines.push(content)
-        lines.push('</file>')
-    }
-    lines.push('summarize each file into a paragraph. output in this format')
-    lines.push('{')
-    for (const file of files) {
-        const relPath = vscode.workspace.asRelativePath(file)
-        lines.push(`"${relPath}":"summary",`)
-    }
-    lines.push('}')
-    const repoMapTxt = vscode.Uri.joinPath(vscode.workspace.workspaceFolders[0].uri, `repo-map-${counter}.txt`)
-    await vscode.workspace.fs.writeFile(repoMapTxt, new TextEncoder().encode(lines.join('\n')))
-    files = []
-}
-for (const folder of vscode.workspace.workspaceFolders) {
-    await walkDirectory(folder.uri);
-}
-await dumpFiles()
-```
-
-You need to manually execute the prompts report-map-n.txt and write the output in repo-map.json
-
-## include files to answer `<user-questions>`
-
-This requires a repo-map.json file
-
-```js
-const REPO_MAP = JSON.parse(new TextDecoder().decode(await vscode.workspace.fs.readFile(vscode.Uri.joinPath(vscode.workspace.workspaceFolders[0].uri, 'repo-map.json'))))
-// const REPO_MAP = await runCodemod('repo-map.codemod.js')
-const USER_QUESTIONS = `
-After we have FileChangeRequest, how to generate the change?
-What prompt will be used to generate the change?
+async function writeScoreQuestion(questionFile, chunkLines, chunkFiles) {
+    chunkLines += `
+<user-questions>
+${USER_QUESTIONS}
+</user-questions>
+based on relevance to user questions give following files a score in range 1 to 10.
+output in this format
+<relevance-score>
 `
-let INCLUDED_FILES = `
-sweepai/agents/assistant_functions.py
-sweepai/agents/assistant_wrapper.py
-sweepai/agents/modify_file.py
-sweepai/core/update_prompts.py
-sweepai/agents/assistant_function_modify.py 
-sweepai/agents/assistant_planning.py 
-sweepai/agents/modify_bot.py 
-sweepai/agents/prune_modify_snippets.py 
-sweepai/core/prompts.py 
-`
-INCLUDED_FILES = INCLUDED_FILES.trim()
-if (INCLUDED_FILES) {
-    INCLUDED_FILES = INCLUDED_FILES.split('\n')
-    INCLUDED_FILES = INCLUDED_FILES.map(f => f.trim())
-    INCLUDED_FILES = new Set(INCLUDED_FILES)
-} else {
-    INCLUDED_FILES = new Set()
-}
-let lines = []
-for (let path of INCLUDED_FILES) {
-    if (path[0] === '<') {
-        path = path.substring(1)
+    for (const relPath of chunkFiles) {
+        chunkLines += `${relPath}: n\n`
     }
-    if (path[path.length - 1] === '>') {
-        path = path.substring(0, path.length - 1)
-    }
-    const uri = vscode.Uri.joinPath(vscode.workspace.workspaceFolders[0].uri, path)
-    try {
-        await vscode.workspace.fs.stat(uri);
-        lines.push(`<file path="${path}">`)
-        lines.push(new TextDecoder().decode(await vscode.workspace.fs.readFile(uri)))
-        lines.push(`</file>`)
-        console.log('select file', path)
-    } catch (e) {
-        console.log('ignore file', path, e.stack)
-    }
-    delete REPO_MAP[path]
+    chunkLines += '</relevance-score>'
+    await vscode.workspace.fs.writeFile(questionFile, utf8encoder.encode(chunkLines))
+    return chunkLines
 }
-for (const [k, v] of Object.entries(REPO_MAP)) {
-    lines.push(`<file path="${k}">`)
-    lines.push(v)
-    lines.push(`</file>`)
-}
-const repoToPromptTxt = vscode.Uri.joinPath(vscode.workspace.workspaceFolders[0].uri, 'repo-to-prompt.txt')
-await vscode.workspace.fs.writeFile(repoToPromptTxt, new TextEncoder().encode(lines.join('\n')))
-lines = []
-lines.push('Do NOT answer <user-questions>')
-lines.push(USER_QUESTIONS.trim())
-lines.push('</user-questions> now. We will answer user questions later.')
-if (INCLUDED_FILES.size) {
-    lines.push('Besides <already-included-files>')
-    lines.push(Array.from(INCLUDED_FILES).join(',\n'))
-    lines.push('</already-included-files>')
-}
-lines.push(`output related extra files in
-<extra-files>
-file paths, which is related to user questions
-</extra-files>`)
-await vscode.env.clipboard.writeText(lines.join('\n'))
-vscode.window.showInformationMessage('file content write to repo-to-prompt.txt, expand query copied to clipboard')
-```
-
-When the code repository to too large to select manually, we can use sonnet LLM to select files using repoMap.json as information index.
-
-# cut chunks of same size
-
-```js
-const files = []
-let lines = ''
-let counter = 0
-async function walkDirectory(uri) {
-    const children = await vscode.workspace.fs.readDirectory(uri);
-    for (const [name, type] of children) {
-        if (name.startsWith('.') || name === 'node_modules' || name === 'pnpm-lock.yaml') {
-            continue;
-        }
-        const childUri = vscode.Uri.joinPath(uri, name);
-        if (type === vscode.FileType.Directory) {
-            await walkDirectory(childUri);
-        } else if (type === vscode.FileType.File && (name.endsWith('.c') || name.endsWith('.cpp') || name.endsWith('.h'))) {
-            const relPath = vscode.workspace.asRelativePath(childUri)
-            if (relPath.includes('test')) {
-                continue
-            }
-            const content = new TextDecoder().decode(await vscode.workspace.fs.readFile(childUri)).replace(/\/\/.*|\/\*[\s\S]*?\*\//g, '')
-            if (!content.trim()) {
-                continue
-            }
-            files.push(childUri)
-        }
-    }
-}
-async function dumpFiles() {
+async function filterChunk(relevantFiles) {
     counter += 1
-    const repoMapTxt = vscode.Uri.joinPath(vscode.workspace.workspaceFolders[0].uri, `repo-${counter}.txt`)
-    await vscode.workspace.fs.writeFile(repoMapTxt, new TextEncoder().encode(lines))
-    lines = ''
+    const questionFile = vscode.Uri.joinPath(rootDir, `question-${counter}.txt`)
+    const question = await writeScoreQuestion(questionFile, chunkLines, chunkFiles)
+    const answerFile = vscode.Uri.joinPath(rootDir, `question-${counter}-answer.txt`)
+    const answer = await askClaude(answerFile, question)
+    for (const [relPath, score] of Object.entries(extractScores(answer))) {
+        if (score >= 7) {
+            relevantFiles.add(relPath)
+        }
+    }
+    chunkLines = ''
+    chunkFiles = []
+    return relevantFiles
 }
 
-const target = vscode.Uri.joinPath(vscode.workspace.workspaceFolders[0].uri, 'src/modules/ekf2')
-await walkDirectory(target);
+await walkDirectory(vscode.Uri.joinPath(rootDir, 'src/modules/ekf2'))
+await walkDirectory(vscode.Uri.joinPath(rootDir, 'src/modules/land_detector'))
+
+var seed = 1;
+function random() {
+    var x = Math.sin(seed++) * 10000;
+    return x - Math.floor(x);
+}
 
 function shuffle(array) {
     for (let i = array.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [array[i], array[j]] = [array[j], array[i]];
+        const j = Math.floor(random() * (i + 1));
+        [array[i], array[j]] = [array[j], array[i]];
     }
     return array;
 }
 
-shuffle(files)
-for (const file of files) {
-    const relPath = vscode.workspace.asRelativePath(file)
-    const content = new TextDecoder().decode(await vscode.workspace.fs.readFile(file)).replace(/\/\/.*|\/\*[\s\S]*?\*\//g, '')
-    lines += '\n<file path="' + relPath + '">\n'
-    lines += content
-    lines += '\n</file>\n'
-    if (lines.length > 300 * 1000) {
-        await dumpFiles()
-    }
+async function readFile(file) {
+    return utf8decoder.decode(await vscode.workspace.fs.readFile(file)).replace(/\/\/.*|\/\*[\s\S]*?\*\//g, '')
 }
-await dumpFiles()
-shuffle(files)
-for (const file of files) {
-    const relPath = vscode.workspace.asRelativePath(file)
-    const content = new TextDecoder().decode(await vscode.workspace.fs.readFile(file)).replace(/\/\/.*|\/\*[\s\S]*?\*\//g, '')
-    lines += '\n<file path="' + relPath + '">\n'
-    lines += content
-    lines += '\n</file>\n'
-    if (lines.length > 300 * 1000) {
-        await dumpFiles()
+
+async function filterAll(relevantFiles) {
+    shuffle(files)
+    for (const file of files) {
+        const relPath = vscode.workspace.asRelativePath(file)
+        if (relevantFiles.has(relPath)) {
+            continue
+        }
+        const content = await readFile(file)
+        chunkLines += '\n<file path="' + relPath + '">\n'
+        chunkLines += content
+        chunkLines += '\n</file>\n'
+        chunkFiles.push(relPath)
+        if (chunkLines.length > 200 * 1000 || chunkFiles.length > 15) {
+            await filterChunk(relevantFiles)
+        }
     }
+    await filterChunk(relevantFiles)
+    console.log('relevant files', JSON.stringify(Array.from(relevantFiles), undefined, '  '))
 }
-await dumpFiles()
+
+const relevantFiles = new Set()
+await filterAll(relevantFiles)
+// USER_QUESTIONS += '\nBesides these files\n'
+// for (const relPath of relevantFiles) {
+//     USER_QUESTIONS += relPath
+//     USER_QUESTIONS += '\n'
+// }
+// USER_QUESTIONS += 'What extra files need to be included to answer the questions?'
+// await filterAll(relevantFiles)
+let concatedRelevantFiles = ''
+for (const relPath of relevantFiles) {
+    const relevantFile = vscode.Uri.joinPath(rootDir, relPath)
+    concatedRelevantFiles += '\n<' + relPath + '>\n'
+    concatedRelevantFiles += await readFile(relevantFile)
+    concatedRelevantFiles += '\n</' + relPath + '>\n'
+}
+await vscode.workspace.fs.writeFile(vscode.Uri.joinPath(rootDir, 'repo-to-prompt.txt'), utf8encoder.encode(concatedRelevantFiles))
 ```
 
 # links to similar tools

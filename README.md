@@ -256,3 +256,4 @@ You need to manually update USER_QUESTIONS and walkDirectory(xxx) first. Then ru
 * youtube to prompt: https://gist.github.com/taowen/2a49387d5abc195ba57acbb94f4dd28f
 * pdf to prompt: https://gist.github.com/taowen/4ce9de62255ded695db106ded4aa18c1
 * audio to prompt: https://huggingface.co/spaces/Xenova/whisper-web
+* token counter: https://huggingface.co/spaces/Xenova/the-tokenizer-playground

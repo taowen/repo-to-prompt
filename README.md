@@ -254,3 +254,5 @@ You need to manually update USER_QUESTIONS and walkDirectory(xxx) first. Then ru
 * html to prompt: https://gist.github.com/taowen/95ae056924f33bafa809cb4147e52566
 * arxiv to prompt: https://gist.github.com/taowen/3a0ee294ae60fd7e8f14f4af81edf38e
 * youtube to prompt: https://gist.github.com/taowen/2a49387d5abc195ba57acbb94f4dd28f
+* pdf to prompt: https://gist.github.com/taowen/4ce9de62255ded695db106ded4aa18c1
+* audio to prompt: https://huggingface.co/spaces/Xenova/whisper-web

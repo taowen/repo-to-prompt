@@ -70,24 +70,56 @@ You can define multiple `xxx.codemod.js` files.
 Use keyboard short `ctrl+'` to pick from all `*.codemod.js` files. 
 However, script executed from shortcut does not have access to `selectedFile` or `selectedFiles`.
 
-## filter relevant files using claude 3 haiku
+## code repo QA by gemini-1.5-flash-latest
 
 ```js
-let USER_QUESTIONS = `
-代码中的静止检测算法分为几种？每一种静止检测算法完整的上下游数据流是怎样的？
-`
-const { CLAUDE_API_URL, CLAUDE_API_KEY } = vscode.workspace.getConfiguration('taowen.repo-to-prompt')
-if (!CLAUDE_API_KEY) {
-    vscode.window.showInformationMessage('please set taowen.repo-to-prompt.CLAUDE_API_KEY in your settings.json')
+const { GEMINI_API_URL, GEMINI_API_KEY } = vscode.workspace.getConfiguration('taowen.repo-to-prompt')
+if (!GEMINI_API_KEY) {
+    // 查看 -> 命令面板 -> 首选项：打开用户设置（JSON）
+    vscode.window.showInformationMessage('please set taowen.repo-to-prompt.GEMINI_API_KEY in your settings.json')
     return;
 }
+const SEARCH_IN_DIRS = ['src/modules/navigator','src/modules/ekf2']
+const USER_QUESTION = 'navigator 和 ekf2 模块之间是通过什么通信的？'
+const MODEL = 'gemini-1.5-flash-latest'
+/*
+执行结果如下：
+请求大小：779174
+navigator 和 ekf2 模块之间是通过 **uORB** 通信的。
+
+**uORB** 是 PX4 中的一种基于发布/订阅的进程间通信机制，它允许不同模块之间交换数据。
+
+**navigator 模块** 订阅 ekf2 发布的以下 uORB 主题：
+
+* **vehicle_local_position**: 包含本地位置信息，例如 x, y, z 坐标、速度、加速度和航向。
+* **vehicle_attitude**: 包含姿态信息，例如四元数和欧拉角。
+* **vehicle_global_position**: 包含全局位置信息，例如经度、纬度和海拔高度。
+* **vehicle_odometry**: 包含里程计信息，例如位姿、速度和角速度。
+* **vehicle_status**: 包含飞行器状态信息，例如起飞状态、着陆状态和飞行模式。
+* **vehicle_land_detected**: 包含着陆检测信息。
+* **wind**: 包含风速信息 (仅当 ekf2 配置为估计风速时)。
+* **sensor_combined**: 包含 IMU 数据 (仅当 ekf2 使用 sensor_combined 主题时)。
+
+**ekf2 模块** 订阅 navigator 发布的以下 uORB 主题：
+
+* **vehicle_command**: 包含导航器发出的命令，例如重新定位、切换模式和执行任务。
+
+**工作流程：**
+
+1. ekf2 估计姿态、位置、速度和风速等信息，并通过相应的 uORB 主题发布。
+2. navigator 订阅这些主题，并使用这些信息来执行导航任务，例如遵循航点、返回起点或着陆。
+3. navigator 使用 vehicle_command 主题向 ekf2 发送命令，例如重新定位到特定位置或切换到特定的飞行模式。
+
+因此，navigator 和 ekf2 通过 uORB 主题交换数据和命令，以协调飞行器自主飞行。
+*/
+// === implementation ===
 const utf8decoder = new TextDecoder()
 const utf8encoder = new TextEncoder()
 const rootDir = vscode.workspace.workspaceFolders[0].uri
-const files = []
-let chunkLines = ''
-let chunkFiles = []
-let counter = 0
+async function readFile(file) {
+    return utf8decoder.decode(await vscode.workspace.fs.readFile(file)).replace(/\/\/.*|\/\*[\s\S]*?\*\//g, '')
+}
+const lines = []
 async function walkDirectory(uri) {
     const children = await vscode.workspace.fs.readDirectory(uri);
     for (const [name, type] of children) {
@@ -96,158 +128,49 @@ async function walkDirectory(uri) {
         }
         const childUri = vscode.Uri.joinPath(uri, name);
         if (type === vscode.FileType.Directory) {
+            if (name.includes('test')) {
+                continue
+            }
             await walkDirectory(childUri);
-        } else if (type === vscode.FileType.File && (name.endsWith('.c') || name.endsWith('.cpp'))) {
+        } else if (type === vscode.FileType.File && (name.endsWith('.c') || name.endsWith('.cpp') || name.endsWith('.py') || name.endsWith('.js') || name.endsWith('.ts'))) {
             const relPath = vscode.workspace.asRelativePath(childUri)
-            if (relPath.includes('test')) {
-                continue
-            }
-            const content = await readFile(childUri)
-            if (!content.trim()) {
-                continue
-            }
-            files.push(childUri)
+            lines.push(`<file path="${relPath}">`)
+            lines.push(await readFile(childUri))
+            lines.push('</file>')
         }
     }
 }
-async function readPreviousAnswer(answerFile) {
-    try {
-        return JSON.parse(utf8decoder.decode(await vscode.workspace.fs.readFile(answerFile))).content[0].text
-    } catch(e) {
-        // ignore
-        return undefined
+async function main() {
+    for (const searchInDir of SEARCH_IN_DIRS) {
+        await walkDirectory(vscode.Uri.joinPath(rootDir, searchInDir))
     }
-}
-async function askClaude(answerFile, question) {
-    let answer = await readPreviousAnswer(answerFile)
-    if (answer) {
-        return answer;
-    }
-    console.log('asking question', answerFile.path)
-    const resp = await fetch(CLAUDE_API_URL || 'https://api.anthropic.com/v1/messages', {
-        method: 'POST', headers: {
-            "x-api-key": CLAUDE_API_KEY,
-            "anthropic-version": '2023-06-01',
-            "content-type": "application/json",
-        }, body: JSON.stringify({
-            model: 'claude-3-haiku-20240307',
-            max_tokens: 4000,
-            temperature: 0,
-            messages: [{ role: "user", content: question }] })
-    });
+    lines.push(USER_QUESTION)
+    const url = GEMINI_API_URL || 'https://generativelanguage.googleapis.com'
+    const body = JSON.stringify({
+        "contents": [{
+          "parts":[{
+            "text": lines.join('\n')}]}]})
+    console.log(`请求大小：${body.length}`)
+    const resp = await fetch(`${url}/v1beta/models/${MODEL}:generateContent?key=${GEMINI_API_KEY}`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body
+    })
     const respJson = await resp.json()
-    await vscode.workspace.fs.writeFile(answerFile, utf8encoder.encode(JSON.stringify(respJson, undefined, '  ')))
-    return respJson.content[0].text
-}
-function extractScores(answer) {
-    answer = answer.substring(answer.indexOf('<relevance-score>'))
-    answer = answer.substring('<relevance-score>'.length)
-    answer = answer.substring(0, answer.indexOf('</relevance-score>'))
-    const scores = {}
-    for (let line of answer.split('\n')) {
-        line = line.trim()
-        if (line.length === 0) {
-            continue
-        }
-        const [relPath, score] = line.split(':', 2)
-        scores[relPath.trim()] = Number.parseInt(score.trim())
+    try {
+        console.log(respJson.candidates[0].content.parts[0].text)
+    } catch {
+        console.log(JSON.stringify(respJson, undefined, '  '))
     }
-    return scores
 }
-async function writeScoreQuestion(questionFile, chunkLines, chunkFiles) {
-    chunkLines += `
-<user-questions>
-${USER_QUESTIONS}
-</user-questions>
-based on relevance to user questions give following files a score in range 1 to 10.
-output in this format
-<relevance-score>
-`
-    for (const relPath of chunkFiles) {
-        chunkLines += `${relPath}: n\n`
-    }
-    chunkLines += '</relevance-score>'
-    await vscode.workspace.fs.writeFile(questionFile, utf8encoder.encode(chunkLines))
-    return chunkLines
+try {
+    await main()
+} catch(e) {
+    console.log('failed', e)
 }
-async function filterChunk(relevantFiles) {
-    counter += 1
-    const questionFile = vscode.Uri.joinPath(rootDir, `question-${counter}.txt`)
-    const question = await writeScoreQuestion(questionFile, chunkLines, chunkFiles)
-    const answerFile = vscode.Uri.joinPath(rootDir, `question-${counter}-answer.txt`)
-    const answer = await askClaude(answerFile, question)
-    for (const [relPath, score] of Object.entries(extractScores(answer))) {
-        if (score >= 7) {
-            relevantFiles.add(relPath)
-        }
-    }
-    chunkLines = ''
-    chunkFiles = []
-    return relevantFiles
-}
-
-await walkDirectory(vscode.Uri.joinPath(rootDir, 'src/modules/ekf2'))
-await walkDirectory(vscode.Uri.joinPath(rootDir, 'src/modules/land_detector'))
-
-var seed = 1;
-function random() {
-    var x = Math.sin(seed++) * 10000;
-    return x - Math.floor(x);
-}
-
-function shuffle(array) {
-    for (let i = array.length - 1; i > 0; i--) {
-        const j = Math.floor(random() * (i + 1));
-        [array[i], array[j]] = [array[j], array[i]];
-    }
-    return array;
-}
-
-async function readFile(file) {
-    return utf8decoder.decode(await vscode.workspace.fs.readFile(file)).replace(/\/\/.*|\/\*[\s\S]*?\*\//g, '')
-}
-
-async function filterAll(relevantFiles) {
-    shuffle(files)
-    for (const file of files) {
-        const relPath = vscode.workspace.asRelativePath(file)
-        if (relevantFiles.has(relPath)) {
-            continue
-        }
-        const content = await readFile(file)
-        chunkLines += '\n<file path="' + relPath + '">\n'
-        chunkLines += content
-        chunkLines += '\n</file>\n'
-        chunkFiles.push(relPath)
-        if (chunkLines.length > 200 * 1000 || chunkFiles.length > 15) {
-            await filterChunk(relevantFiles)
-        }
-    }
-    await filterChunk(relevantFiles)
-    console.log('relevant files', JSON.stringify(Array.from(relevantFiles), undefined, '  '))
-}
-
-const relevantFiles = new Set()
-await filterAll(relevantFiles)
-// USER_QUESTIONS += '\nBesides these files\n'
-// for (const relPath of relevantFiles) {
-//     USER_QUESTIONS += relPath
-//     USER_QUESTIONS += '\n'
-// }
-// USER_QUESTIONS += 'What extra files need to be included to answer the questions?'
-// await filterAll(relevantFiles)
-let concatedRelevantFiles = ''
-for (const relPath of relevantFiles) {
-    const relevantFile = vscode.Uri.joinPath(rootDir, relPath)
-    concatedRelevantFiles += '\n<' + relPath + '>\n'
-    concatedRelevantFiles += await readFile(relevantFile)
-    concatedRelevantFiles += '\n</' + relPath + '>\n'
-}
-await vscode.env.clipboard.writeText(concatedRelevantFiles)
-vscode.window.showInformationMessage('copied to clipboard')
 ```
-
-You need to manually update USER_QUESTIONS and walkDirectory(xxx) first. Then run repo-to-prompt to call claude api to filter each file based on the question.
 
 # links to similar tools
 
